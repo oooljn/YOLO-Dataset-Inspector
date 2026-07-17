@@ -18,15 +18,18 @@ This project provides automatic dataset inspection and visualization functions t
 - Analyze dataset statistics
 
 ## Project Structure
+
+```text
 YOLO-Dataset-Inspector
 │
 ├── src
-│ ├── checker.py
-│ └── visualizer.py
+│   ├── checker.py
+│   └── visualizer.py
 │
 ├── app.py
 ├── requirements.txt
 └── docs
+```
 
 ## Installation
 
