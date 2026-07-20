@@ -29,6 +29,8 @@ def analyze_dataset(dataset_path: str) -> dict:
             - total_objects: total number of annotated objects
             - image_count: total number of images
             - label_count: total number of label files
+            - objects_per_image: dict with min, max, avg objects per image
+            - bbox_area_dist: dict with small, medium, large bbox counts
             - errors: list of error/warning messages
     """
     dataset = Path(dataset_path)
@@ -43,6 +45,8 @@ def analyze_dataset(dataset_path: str) -> dict:
             "total_objects": 0,
             "image_count": 0,
             "label_count": 0,
+            "objects_per_image": {"min": 0, "max": 0, "avg": 0.0},
+            "bbox_area_dist": {"small": 0, "medium": 0, "large": 0},
             "errors": [f"Dataset path not found: {dataset_path}"],
         }
 
@@ -62,8 +66,10 @@ def analyze_dataset(dataset_path: str) -> dict:
     else:
         errors.append("data.yaml not found in dataset directory")
 
-    # Count class distribution
+    # Count class distribution and per-image stats
     class_counts = {}
+    bbox_area_dist = {"small": 0, "medium": 0, "large": 0}
+    objects_per_file = []
     total_objects = 0
     label_count = 0
     invalid_lines = 0
@@ -72,6 +78,7 @@ def analyze_dataset(dataset_path: str) -> dict:
     if labels_dir.exists():
         for label_file in sorted(labels_dir.glob("*.txt")):
             label_count += 1
+            file_obj_count = 0
             try:
                 with open(label_file, "r", encoding="utf-8") as f:
                     for line_no, line in enumerate(f, 1):
@@ -84,18 +91,41 @@ def analyze_dataset(dataset_path: str) -> dict:
                             continue
                         try:
                             class_id = int(parts[0])
+                            bbox_w = float(parts[3])
+                            bbox_h = float(parts[4])
                         except ValueError:
                             invalid_lines += 1
                             continue
                         class_counts[class_id] = class_counts.get(class_id, 0) + 1
                         total_objects += 1
+                        file_obj_count += 1
+
+                        # Classify bbox area (normalized, 0-1)
+                        area = bbox_w * bbox_h
+                        if area < 0.01:
+                            bbox_area_dist["small"] += 1
+                        elif area < 0.10:
+                            bbox_area_dist["medium"] += 1
+                        else:
+                            bbox_area_dist["large"] += 1
             except (IOError, OSError) as e:
                 errors.append(f"Cannot read {label_file.name}: {e}")
+            objects_per_file.append(file_obj_count)
     else:
         errors.append("labels/ directory not found")
 
     if invalid_lines > 0:
         errors.append(f"Skipped {invalid_lines} invalid annotation lines")
+
+    # Compute objects-per-image statistics
+    if objects_per_file:
+        objects_per_image = {
+            "min": min(objects_per_file),
+            "max": max(objects_per_file),
+            "avg": round(sum(objects_per_file) / len(objects_per_file), 1),
+        }
+    else:
+        objects_per_image = {"min": 0, "max": 0, "avg": 0.0}
 
     # Count image sizes
     image_sizes = {}
@@ -123,6 +153,8 @@ def analyze_dataset(dataset_path: str) -> dict:
         "total_objects": total_objects,
         "image_count": image_count,
         "label_count": label_count,
+        "objects_per_image": objects_per_image,
+        "bbox_area_dist": bbox_area_dist,
         "errors": errors,
     }
 
@@ -140,6 +172,14 @@ def print_statistics(stats: dict) -> None:
     print(f"Images:  {stats['image_count']}")
     print(f"Labels:  {stats['label_count']}")
     print(f"Objects: {stats['total_objects']}")
+
+    opp = stats.get("objects_per_image", {})
+    if opp:
+        print(f"Objects per image:  min={opp['min']}  max={opp['max']}  avg={opp['avg']}")
+
+    bbox = stats.get("bbox_area_dist", {})
+    if bbox:
+        print(f"BBox area distribution:  small={bbox['small']}  medium={bbox['medium']}  large={bbox['large']}")
     print()
 
     if stats["class_names"]:
@@ -161,5 +201,5 @@ def print_statistics(stats: dict) -> None:
         print()
         print("Issues found:")
         for err in stats["errors"]:
-            print(f"  ⚠ {err}")
+            print(f"  [!] {err}")
     print("=" * 50)
