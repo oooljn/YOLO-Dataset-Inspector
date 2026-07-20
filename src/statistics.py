@@ -8,9 +8,34 @@ Analyze a YOLO-format dataset and return:
 """
 
 from pathlib import Path
+from typing import Union
 
 import yaml
-from PIL import Image
+
+# Lazy import: Pillow is only needed when actually loading images
+try:
+    from PIL import Image
+    _HAS_PIL = True
+except ImportError:
+    _HAS_PIL = False
+
+
+def _normalize_class_names(raw_names: Union[list, dict, None]) -> dict:
+    """
+    Convert YOLO names (list or dict) into uniform {int: str} format.
+
+    Examples:
+        ['cat', 'dog']          -> {0: 'cat', 1: 'dog'}
+        {0: 'cat', 1: 'dog'}    -> {0: 'cat', 1: 'dog'}
+        {'0': 'cat', '1': 'dog'} -> {0: 'cat', 1: 'dog'}
+    """
+    if raw_names is None:
+        return {}
+    if isinstance(raw_names, list):
+        return {i: str(name) for i, name in enumerate(raw_names)}
+    if isinstance(raw_names, dict):
+        return {int(k): str(v) for k, v in raw_names.items()}
+    return {}
 
 
 def analyze_dataset(dataset_path: str) -> dict:
@@ -58,7 +83,7 @@ def analyze_dataset(dataset_path: str) -> dict:
             with open(yaml_path, "r", encoding="utf-8") as f:
                 yaml_data = yaml.safe_load(f)
             if yaml_data and isinstance(yaml_data, dict):
-                names = yaml_data.get("names", {})
+                names = _normalize_class_names(yaml_data.get("names"))
             else:
                 errors.append("data.yaml is empty or invalid")
         except yaml.YAMLError as e:
@@ -81,7 +106,7 @@ def analyze_dataset(dataset_path: str) -> dict:
             file_obj_count = 0
             try:
                 with open(label_file, "r", encoding="utf-8") as f:
-                    for line_no, line in enumerate(f, 1):
+                    for line in f:
                         line = line.strip()
                         if not line:
                             continue
@@ -133,16 +158,19 @@ def analyze_dataset(dataset_path: str) -> dict:
 
     images_dir = dataset / "images"
     if images_dir.exists():
-        for img_file in sorted(images_dir.iterdir()):
-            if img_file.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"}:
-                try:
-                    with Image.open(img_file) as img:
-                        w, h = img.size
-                        size_key = f"{w}x{h}"
-                        image_sizes[size_key] = image_sizes.get(size_key, 0) + 1
-                    image_count += 1
-                except Exception:
-                    errors.append(f"Cannot read image: {img_file.name}")
+        if not _HAS_PIL:
+            errors.append("Pillow not installed — image size statistics unavailable")
+        else:
+            for img_file in sorted(images_dir.iterdir()):
+                if img_file.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp"}:
+                    try:
+                        with Image.open(img_file) as img:
+                            w, h = img.size
+                            size_key = f"{w}x{h}"
+                            image_sizes[size_key] = image_sizes.get(size_key, 0) + 1
+                        image_count += 1
+                    except Exception:
+                        errors.append(f"Cannot read image: {img_file.name}")
     else:
         errors.append("images/ directory not found")
 
