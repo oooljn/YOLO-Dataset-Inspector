@@ -39,3 +39,20 @@ git clone https://github.com/oooljn/YOLO-Dataset-Inspector.git
 cd YOLO-Dataset-Inspector
 
 pip install -r requirements.txt
+Environment
+
+Python >=3.10
+
+Pillow
+
+pytest
+
+Testing
+bash
+python -m pytest tests/ -v
+Usage Example
+python
+from src.visualizer import visualize
+visualize("examples/demo_dataset/images/good.jpg",
+          "examples/demo_dataset/labels/good.txt",
+          "tests/output/vis.jpg")
