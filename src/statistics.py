@@ -111,7 +111,7 @@ def analyze_dataset(dataset_path: str) -> dict:
                         if not line:
                             continue
                         parts = line.split()
-                        if len(parts) < 5:
+                        if len(parts) != 5:
                             invalid_lines += 1
                             continue
                         try:
@@ -119,6 +119,9 @@ def analyze_dataset(dataset_path: str) -> dict:
                             bbox_w = float(parts[3])
                             bbox_h = float(parts[4])
                         except ValueError:
+                            invalid_lines += 1
+                            continue
+                        if class_id < 0:
                             invalid_lines += 1
                             continue
                         class_counts[class_id] = class_counts.get(class_id, 0) + 1
