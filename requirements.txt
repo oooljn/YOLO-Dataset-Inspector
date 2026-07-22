@@ -3,3 +3,6 @@ opencv-python
 matplotlib
 streamlit
 pyyaml
+pandas
+Pillow
+pytest

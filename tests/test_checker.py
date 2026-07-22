@@ -1,46 +1,130 @@
-import sys
-import os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+from PIL import Image
 
-sys.path.insert(0, str(BASE_DIR / "src"))
+from src.checker import inspect_dataset
 
-import checker
-import pytest
 
-def test_parse_good_label():
-    """测试 good.txt 是否能被正确解析"""
-    label_path = BASE_DIR / "examples" / "demo_dataset" / "labels" / "good.txt"
-    
-    print("\n🔍 正在寻找文件:", label_path)
-    print("📂 文件是否存在:", label_path.exists())
-    
-    result = checker.parse_label(str(label_path))
+def create_image(path: Path) -> None:
+    """创建一张简单测试图片。"""
+    image = Image.new("RGB", (100, 100), "white")
+    image.save(path)
 
-    assert result is not None, "解析失败，应该返回一个列表或字典"
-    assert len(result) == 1, "应该解析出 1 个目标"
-    assert result[0]['class_id'] == 0
-    assert result[0]['x_center'] == 0.50
-    assert result[0]['y_center'] == 0.50
-    assert result[0]['width'] == 0.30
-    assert result[0]['height'] == 0.20
-    def test_out_of_bound_label():
-        """测试越界坐标的检测"""
-    label_path = BASE_DIR / "examples" / "demo_dataset" / "labels" / "out_of_bound.txt"
-    result = checker.parse_label(str(label_path))
-    assert result is not None
-    assert len(result) == 0, "越界标签不应被解析为有效目标"
 
-def test_bad_format_label():
-    """测试格式错误的标签"""
-    label_path = BASE_DIR / "examples" / "demo_dataset" / "labels" / "bad_format.txt"
-    result = checker.parse_label(str(label_path))
-    assert result is not None
-    assert len(result) == 0, "格式错误不应解析出任何目标"
+def test_valid_dataset(tmp_path: Path) -> None:
+    images_dir = tmp_path / "images"
+    labels_dir = tmp_path / "labels"
 
-def test_missing_label():
-    """测试标签文件缺失的情况"""
-    fake_label_path = str(BASE_DIR / "examples" / "demo_dataset" / "labels" / "i_dont_exist.txt")
-    result = checker.parse_label(fake_label_path)
-    assert result is None, "缺失的标签文件应返回 None"
+    images_dir.mkdir()
+    labels_dir.mkdir()
+
+    create_image(images_dir / "image001.jpg")
+
+    (labels_dir / "image001.txt").write_text(
+        "0 0.5 0.5 0.3 0.2\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_dataset(str(tmp_path))
+
+    assert result["image_count"] == 1
+    assert result["label_count"] == 1
+    assert result["annotation_count"] == 1
+    assert result["missing_labels"] == []
+    assert result["orphan_labels"] == []
+    assert result["invalid_annotations"] == []
+
+
+def test_missing_label(tmp_path: Path) -> None:
+    images_dir = tmp_path / "images"
+    labels_dir = tmp_path / "labels"
+
+    images_dir.mkdir()
+    labels_dir.mkdir()
+
+    create_image(images_dir / "image001.jpg")
+
+    result = inspect_dataset(str(tmp_path))
+
+    assert "image001" in result["missing_labels"]
+
+
+def test_orphan_label(tmp_path: Path) -> None:
+    images_dir = tmp_path / "images"
+    labels_dir = tmp_path / "labels"
+
+    images_dir.mkdir()
+    labels_dir.mkdir()
+
+    (labels_dir / "orphan.txt").write_text(
+        "0 0.5 0.5 0.3 0.2\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_dataset(str(tmp_path))
+
+    assert "orphan" in result["orphan_labels"]
+
+
+def test_empty_label(tmp_path: Path) -> None:
+    images_dir = tmp_path / "images"
+    labels_dir = tmp_path / "labels"
+
+    images_dir.mkdir()
+    labels_dir.mkdir()
+
+    create_image(images_dir / "image001.jpg")
+    (labels_dir / "image001.txt").write_text(
+        "",
+        encoding="utf-8",
+    )
+
+    result = inspect_dataset(str(tmp_path))
+
+    assert "image001.txt" in result["empty_labels"]
+
+
+def test_invalid_annotation_format(tmp_path: Path) -> None:
+    images_dir = tmp_path / "images"
+    labels_dir = tmp_path / "labels"
+
+    images_dir.mkdir()
+    labels_dir.mkdir()
+
+    create_image(images_dir / "image001.jpg")
+
+    (labels_dir / "image001.txt").write_text(
+        "0 0.5 0.5\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_dataset(str(tmp_path))
+
+    assert len(result["invalid_annotations"]) == 1
+
+
+def test_out_of_range_annotation(tmp_path: Path) -> None:
+    images_dir = tmp_path / "images"
+    labels_dir = tmp_path / "labels"
+
+    images_dir.mkdir()
+    labels_dir.mkdir()
+
+    create_image(images_dir / "image001.jpg")
+
+    (labels_dir / "image001.txt").write_text(
+        "0 1.2 0.5 0.3 0.2\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_dataset(str(tmp_path))
+
+    assert len(result["invalid_annotations"]) == 1
+
+
+def test_nonexistent_dataset() -> None:
+    result = inspect_dataset("this_dataset_does_not_exist")
+
+    assert result["image_count"] == 0
+    assert result["label_count"] == 0
+    assert result["errors"]
