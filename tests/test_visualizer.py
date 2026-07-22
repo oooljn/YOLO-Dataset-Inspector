@@ -1,30 +1,99 @@
-import sys
 from pathlib import Path
-import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "src"))
+from PIL import Image, ImageChops
 
-import visualizer
+from src.visualizer import draw_annotations
 
-IMG_DIR = ROOT / "examples" / "demo_dataset" / "images"
-LABEL_DIR = ROOT / "examples" / "demo_dataset" / "labels"
-OUT_DIR = ROOT / "tests" / "output"
 
-@pytest.fixture(scope="module", autouse=True)
-def setup_output_dir():
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def create_image(path: Path) -> Image.Image:
+    image = Image.new("RGB", (200, 100), "white")
+    image.save(path)
+    return image
 
-def test_visualizer_runs_without_error():
-    img_path = IMG_DIR / "good.jpg"
-    label_path = LABEL_DIR / "good.txt"
-    out_path = OUT_DIR / "output_vis.jpg"
-    
-    assert img_path.exists()
-    assert label_path.exists()
-    
-    visualizer.visualize(str(img_path), str(label_path), str(out_path))
-    
-    assert out_path.exists()
-    assert out_path.stat().st_size > 0
+
+def test_draw_annotations_returns_image(tmp_path: Path) -> None:
+    image_path = tmp_path / "image001.jpg"
+    label_path = tmp_path / "image001.txt"
+
+    create_image(image_path)
+
+    label_path.write_text(
+        "0 0.5 0.5 0.4 0.4\n",
+        encoding="utf-8",
+    )
+
+    result = draw_annotations(
+        str(image_path),
+        str(label_path),
+        ["object"],
+    )
+
+    assert isinstance(result, Image.Image)
+    assert result.size == (200, 100)
+
+
+def test_annotation_changes_image(tmp_path: Path) -> None:
+    image_path = tmp_path / "image001.jpg"
+    label_path = tmp_path / "image001.txt"
+
+    original = create_image(image_path)
+
+    label_path.write_text(
+        "0 0.5 0.5 0.4 0.4\n",
+        encoding="utf-8",
+    )
+
+    result = draw_annotations(
+        str(image_path),
+        str(label_path),
+        ["object"],
+    )
+
+    difference = ImageChops.difference(
+        original.convert("RGB"),
+        result.convert("RGB"),
+    )
+
+    assert difference.getbbox() is not None
+
+
+def test_missing_label_returns_original_image(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "image001.jpg"
+    missing_label_path = tmp_path / "missing.txt"
+
+    original = create_image(image_path)
+
+    result = draw_annotations(
+        str(image_path),
+        str(missing_label_path),
+    )
+
+    difference = ImageChops.difference(
+        original.convert("RGB"),
+        result.convert("RGB"),
+    )
+
+    assert difference.getbbox() is None
+
+
+def test_invalid_label_does_not_crash(tmp_path: Path) -> None:
+    image_path = tmp_path / "image001.jpg"
+    label_path = tmp_path / "image001.txt"
+
+    create_image(image_path)
+
+    label_path.write_text(
+        "invalid annotation\n"
+        "0 1.5 0.5 0.2 0.2\n"
+        "1.5 0.5 0.5 0.2 0.2\n",
+        encoding="utf-8",
+    )
+
+    result = draw_annotations(
+        str(image_path),
+        str(label_path),
+    )
+
+    assert isinstance(result, Image.Image)
