@@ -1,3 +1,6 @@
+ feature/tests-docs
+from PIL import Image, ImageDraw
+=======
 """
 YOLO annotation visualization module.
 """
@@ -7,6 +10,10 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 
 
+    # 确保输出目录存在并保存图片
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    img.save(out_path)
+=======
 def draw_annotations(
     image_path: str,
     label_path: str,
